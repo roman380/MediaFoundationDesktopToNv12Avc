@@ -184,6 +184,12 @@ int main()
         DXGI_OUTDUPL_FRAME_INFO frameInfo;
         hr = dxgiOutput->AcquireNextFrame(300, &frameInfo, &resource);
 
+        //{
+        //    wchar_t Text[256];
+        //    swprintf_s(Text, L"hr 0x%08X\n", hr);
+        //    OutputDebugStringW(Text);
+        //}
+
         if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
             continue;
         }
@@ -231,6 +237,9 @@ int main()
 
         hr = transform->ProcessInput(0, sample, 0);
         if (FAILED(hr)) {
+            wchar_t Text[256];
+            swprintf_s(Text, L"hr 0x%08X\n", hr);
+            OutputDebugStringW(Text);
             Sleep(30);
         }
         sample->Release();
