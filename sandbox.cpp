@@ -54,7 +54,7 @@ struct Application
         dxgiOutput->GetDesc(&DxgiOutputDesc);
         _RPTWN(_CRT_WARN, L"DxgiOutputDesc.ModeDesc %u %u\n", DxgiOutputDesc.ModeDesc.Width, DxgiOutputDesc.ModeDesc.Height);
 
-        transform = wil::CoCreateInstance<IMFTransform>(CLSID_CMSH264EncoderMFT);
+        auto const transform = wil::CoCreateInstance<IMFTransform>(CLSID_CMSH264EncoderMFT);
 
         wil::com_ptr<IMFMediaType> outputMediaType;
         THROW_IF_FAILED(MFCreateMediaType(&outputMediaType));
@@ -120,7 +120,7 @@ struct Application
                 }
                 if(processOutputResult == MF_E_TRANSFORM_NEED_MORE_INPUT) 
                 {
-                    std::this_thread::sleep_for(10ms);
+                    std::this_thread::yield();
                     continue;
                 }
                 THROW_IF_FAILED(processOutputResult);
@@ -148,12 +148,14 @@ struct Application
         contentDesc.OutputWidth = DxgiOutputDesc.ModeDesc.Width;
         contentDesc.OutputHeight = DxgiOutputDesc.ModeDesc.Height;
         contentDesc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+
         wil::com_ptr<ID3D11VideoProcessorEnumerator> vpe;
         THROW_IF_FAILED(videoDevice->CreateVideoProcessorEnumerator(&contentDesc, vpe.put()));
         D3D11_VIDEO_PROCESSOR_CAPS caps;
         THROW_IF_FAILED(vpe->GetVideoProcessorCaps(&caps));
         wil::com_ptr<ID3D11VideoProcessor> processor;
-        bool stereo = caps.FeatureCaps & D3D11_VIDEO_PROCESSOR_FEATURE_CAPS_STEREO;
+        THROW_IF_FAILED(videoDevice->CreateVideoProcessor(vpe.get(), 0, processor.put()));
+
         DXGI_FORMAT format1 = DXGI_FORMAT_B8G8R8A8_UNORM;
         DXGI_FORMAT format = DXGI_FORMAT_NV12;
         RECT src { 0, 0, static_cast<LONG>(contentDesc.InputWidth), static_cast<LONG>(contentDesc.InputHeight) };
@@ -188,7 +190,7 @@ struct Application
             DXGI_OUTDUPL_FRAME_INFO frameInfo;
             wil::com_ptr<IDXGIResource> resource;
             auto const AcquireNextFrameResult = dxgiOutput->AcquireNextFrame(1000u, &frameInfo, resource.put());
-            _RPTWN(_CRT_WARN, L"processOutputResult 0x%08X\n", AcquireNextFrameResult);
+            _RPTWN(_CRT_WARN, L"AcquireNextFrameResult 0x%08X\n", AcquireNextFrameResult);
             if(AcquireNextFrameResult == DXGI_ERROR_WAIT_TIMEOUT) 
                 continue;
             THROW_IF_FAILED(AcquireNextFrameResult);
@@ -196,7 +198,7 @@ struct Application
 
             CD3D11_TEXTURE2D_DESC desc;
             texture->GetDesc(&desc);
-            D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputViewDesc { D3D11_VPIV_DIMENSION_TEXTURE2D };
+            D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputViewDesc { 0, D3D11_VPIV_DIMENSION_TEXTURE2D };
             wil::com_ptr<ID3D11VideoProcessorInputView> inputView;
             THROW_IF_FAILED(videoDevice->CreateVideoProcessorInputView(texture.get(), vpe.get(), &inputViewDesc, inputView.put()));
 
@@ -214,7 +216,7 @@ struct Application
             st.pInputSurface = inputView.get();
             THROW_IF_FAILED(videoContext->VideoProcessorBlt(processor.get(), outputView.get(), 0, 1, &st));
 
-            dxgiOutput->ReleaseFrame();
+            THROW_IF_FAILED(dxgiOutput->ReleaseFrame());
 
             texture1->GetDesc(&desc);
             desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -241,8 +243,6 @@ struct Application
         GetThreadTermination.store(true);
         GetThread.join();
     }
-
-    wil::com_ptr<IMFTransform> transform;
 };
 
 int main()
@@ -253,4 +253,3 @@ int main()
     Application Application;
     Application.Run();
 }
-
